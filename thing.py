@@ -24,6 +24,7 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
     status_line_received: bool  # pyright: ignore[reportUninitializedInstanceVariable]
     auth_fn: AuthFn | None  # pyright: ignore[reportUninitializedInstanceVariable]
     auth_header: str  # pyright: ignore[reportUninitializedInstanceVariable]
+    forward_auth: bool  # pyright: ignore[reportUninitializedInstanceVariable]
 
     @override
     def initialize(
@@ -31,6 +32,7 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
         target_host: str,
         auth_fn: AuthFn | None = None,
         auth_header: str = "Authorization",
+        forward_auth: bool = True,
     ):
         """
         Initialize with target host and optional authentication.
@@ -42,11 +44,14 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
                      an exception for invalid tokens.
             auth_header: The header name to read the bearer token from.
                          Defaults to "Authorization".
+            forward_auth: Whether to forward the auth header to upstream.
+                          Defaults to True (forward auth header to upstream).
         """
         self.target_host = target_host.rstrip('/')
         self.status_line_received = False
         self.auth_fn = auth_fn
         self.auth_header = auth_header
+        self.forward_auth = forward_auth
 
     async def _check_auth(self) -> bool:
         """
@@ -167,6 +172,7 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
         """
         Prepare headers for upstream request.
         Filters out hop-by-hop headers that shouldn't be forwarded.
+        Optionally strips auth header based on forward_auth setting.
         """
         hop_by_hop = {
             'connection', 'keep-alive', 'proxy-authenticate',
@@ -176,8 +182,12 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
 
         headers = {}
         for name, value in self.request.headers.items():
-            if name.lower() not in hop_by_hop:
-                headers[name] = value
+            if name.lower() in hop_by_hop:
+                continue
+            # Strip auth header if not forwarding
+            if not self.forward_auth and name.lower() == self.auth_header.lower():
+                continue
+            headers[name] = value
 
         return headers
 
@@ -263,8 +273,9 @@ class AdvancedStreamingProxyHandler(StreamingProxyHandler):
         target_host: str,
         auth_fn: AuthFn | None = None,
         auth_header: str = "Authorization",
+        forward_auth: bool = True,
     ):
-        super().initialize(target_host, auth_fn, auth_header)
+        super().initialize(target_host, auth_fn, auth_header, forward_auth)
         self.request_body_chunks = []
         self._auth_checked = False
         self._auth_passed = False
@@ -344,6 +355,7 @@ def make_app(
     target_host: str = "http://httpbin.org",
     auth_fn: AuthFn | None = None,
     auth_header: str = "Authorization",
+    forward_auth: bool = True,
 ):
     """
     Create the proxy application.
@@ -353,11 +365,13 @@ def make_app(
         auth_fn: Optional authentication function that takes a token string
                  and returns True if valid, False otherwise.
         auth_header: The header name to read the bearer token from.
+        forward_auth: Whether to forward the auth header to upstream.
     """
     handler_args = {
         "target_host": target_host,
         "auth_fn": auth_fn,
         "auth_header": auth_header,
+        "forward_auth": forward_auth,
     }
     return tornado.web.Application([
         (r"/proxy.*", StreamingProxyHandler, handler_args),

@@ -634,6 +634,105 @@ class TestMCPAuthRequired:
 
 # ============== ADVANCED HANDLER AUTH TESTS ==============
 
+class TestForwardAuth:
+    """Test auth header forwarding behavior."""
+
+    @pytest.fixture(scope="class")
+    def forward_auth_upstream(self) -> Generator[ServerManager, None, None]:
+        """Upstream that echoes back received headers."""
+        class HeaderEchoHandler(tornado.web.RequestHandler):
+            def get(self):
+                # Return all received headers as JSON
+                headers = dict(self.request.headers)
+                self.write({"headers": headers})
+
+        app = tornado.web.Application([(r".*", HeaderEchoHandler)])
+        server = ServerManager(app, 9330)
+        server.start()
+        yield server
+        server.stop()
+
+    @pytest.fixture(scope="class")
+    def strip_auth_proxy(self, forward_auth_upstream) -> Generator[ServerManager, None, None]:
+        """Proxy that strips auth header (default behavior)."""
+        app = tornado.web.Application([
+            (r".*", StreamingProxyHandler, {
+                "target_host": "http://127.0.0.1:9330",
+                "auth_fn": simple_auth_fn,
+                "forward_auth": False,
+            }),
+        ])
+        server = ServerManager(app, 9331)
+        server.start()
+        yield server
+        server.stop()
+
+    @pytest.fixture(scope="class")
+    def forward_auth_proxy(self, forward_auth_upstream) -> Generator[ServerManager, None, None]:
+        """Proxy that forwards auth header."""
+        app = tornado.web.Application([
+            (r".*", StreamingProxyHandler, {
+                "target_host": "http://127.0.0.1:9330",
+                "auth_fn": simple_auth_fn,
+                "forward_auth": True,
+            }),
+        ])
+        server = ServerManager(app, 9332)
+        server.start()
+        yield server
+        server.stop()
+
+    def test_auth_header_stripped_when_disabled(self, strip_auth_proxy, http_client):
+        """Auth header should be stripped when forward_auth=False."""
+        import json
+        response = http_client.fetch(
+            "http://127.0.0.1:9331/test",
+            headers={"Authorization": f"Bearer {VALID_TOKEN}"}
+        )
+        data = json.loads(response.body)
+        # Auth header should NOT be in the headers received by upstream
+        header_names = [k.lower() for k in data["headers"].keys()]
+        assert "authorization" not in header_names
+
+    def test_auth_header_forwarded_when_enabled(self, forward_auth_proxy, http_client):
+        """Auth header should be forwarded when forward_auth=True."""
+        import json
+        response = http_client.fetch(
+            "http://127.0.0.1:9332/test",
+            headers={"Authorization": f"Bearer {VALID_TOKEN}"}
+        )
+        data = json.loads(response.body)
+        # Auth header SHOULD be in the headers received by upstream
+        assert "Authorization" in data["headers"]
+        assert VALID_TOKEN in data["headers"]["Authorization"]
+
+    def test_custom_auth_header_stripped(self, forward_auth_upstream, http_client):
+        """Custom auth header should be stripped when forward_auth=False."""
+        import json
+
+        # Create a proxy with custom header that strips auth
+        app = tornado.web.Application([
+            (r".*", StreamingProxyHandler, {
+                "target_host": "http://127.0.0.1:9330",
+                "auth_fn": simple_auth_fn,
+                "auth_header": "X-API-Key",
+                "forward_auth": False,
+            }),
+        ])
+        server = ServerManager(app, 9333)
+        server.start()
+        try:
+            response = http_client.fetch(
+                "http://127.0.0.1:9333/test",
+                headers={"X-API-Key": VALID_TOKEN}
+            )
+            data = json.loads(response.body)
+            header_names = [k.lower() for k in data["headers"].keys()]
+            assert "x-api-key" not in header_names
+        finally:
+            server.stop()
+
+
 class TestAdvancedHandlerAuth:
     """Test authentication for AdvancedStreamingProxyHandler."""
 
