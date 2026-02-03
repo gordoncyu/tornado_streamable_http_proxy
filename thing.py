@@ -1,4 +1,4 @@
-from typing import Callable, cast
+from typing import Awaitable, Callable, cast
 from typing_extensions import override
 import tornado.ioloop
 import tornado.web
@@ -8,8 +8,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Type alias for authentication function
-AuthFn = Callable[[str], bool]
+# Type alias for async authentication function
+AuthFn = Callable[[str], Awaitable[bool]]
 
 
 class StreamingProxyHandler(tornado.web.RequestHandler):
@@ -48,7 +48,7 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
         self.auth_fn = auth_fn
         self.auth_header = auth_header
 
-    def _check_auth(self) -> bool:
+    async def _check_auth(self) -> bool:
         """
         Check authentication if auth_fn is configured.
 
@@ -71,9 +71,9 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
         if auth_value.lower().startswith("bearer "):
             token = auth_value[7:]  # Remove "Bearer " prefix
 
-        # Call the auth function
+        # Call the async auth function
         try:
-            if not self.auth_fn(token):
+            if not await self.auth_fn(token):
                 self.set_status(401)
                 self.set_header("WWW-Authenticate", "Bearer")
                 self.finish("Invalid token")
@@ -89,37 +89,37 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
 
     @override
     async def get(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     @override
     async def post(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     @override
     async def put(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     @override
     async def delete(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     @override
     async def head(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     @override
     async def patch(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     @override
     async def options(self):
-        if self._check_auth():
+        if await self._check_auth():
             await self._proxy_request()
 
     async def _proxy_request(self):
@@ -270,20 +270,20 @@ class AdvancedStreamingProxyHandler(StreamingProxyHandler):
         self._auth_passed = False
 
     @override
-    def prepare(self):
+    async def prepare(self):
         """Called after headers are read but before body. Check auth early."""
         logger.info(f"Preparing to proxy {self.request.method} {self.request.uri}")
         # Check auth in prepare() so we reject early before receiving body
         self._auth_checked = True
-        self._auth_passed = super()._check_auth()
+        self._auth_passed = await super()._check_auth()
 
     @override
-    def _check_auth(self) -> bool:
+    async def _check_auth(self) -> bool:
         """Use cached auth result from prepare() to avoid double-checking."""
         if self._auth_checked:
             return self._auth_passed
         # Fallback if somehow called before prepare
-        return super()._check_auth()
+        return await super()._check_auth()
 
     @override
     def data_received(self, chunk):

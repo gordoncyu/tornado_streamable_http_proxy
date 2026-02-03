@@ -34,13 +34,13 @@ VALID_TOKEN = "valid-secret-token-12345"
 INVALID_TOKEN = "wrong-token"
 
 
-def simple_auth_fn(token: str) -> bool:
-    """Simple auth function that checks against a known token."""
+async def simple_auth_fn(token: str) -> bool:
+    """Simple async auth function that checks against a known token."""
     return token == VALID_TOKEN
 
 
-def raising_auth_fn(token: str) -> bool:
-    """Auth function that raises an exception for certain tokens."""
+async def raising_auth_fn(token: str) -> bool:
+    """Async auth function that raises an exception for certain tokens."""
     if token == "raise-error":
         raise ValueError("Token validation failed")
     return token == VALID_TOKEN
