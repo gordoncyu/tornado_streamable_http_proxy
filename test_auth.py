@@ -26,7 +26,7 @@ import tornado.httpserver
 import tornado.ioloop
 import tornado.web
 
-from thing import StreamingProxyHandler, AdvancedStreamingProxyHandler
+from streaming_proxy import StreamingProxyHandler, AdvancedStreamingProxyHandler
 
 
 # Test tokens

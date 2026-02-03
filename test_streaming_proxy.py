@@ -4,7 +4,7 @@ import tornado.httpclient
 import tornado.testing
 import tornado.httpserver
 import json
-from thing import (
+from streaming_proxy import (
     StreamingProxyHandler,
     AdvancedStreamingProxyHandler,
     make_app,

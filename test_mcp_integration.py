@@ -75,7 +75,7 @@ class ProxyServer:
             # Import here to avoid issues with event loop
             import asyncio
             import tornado.ioloop
-            from thing import StreamingProxyHandler
+            from streaming_proxy import StreamingProxyHandler
 
             # Create a new event loop for this thread
             asyncio.set_event_loop(asyncio.new_event_loop())
