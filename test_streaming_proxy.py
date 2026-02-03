@@ -690,5 +690,75 @@ class TestInitializeMethod(BaseProxyTest):
         self.assertEqual(response2.code, 200)
 
 
+class TestLockTargetPath(BaseProxyTest):
+    """Test lock_target_path functionality."""
+
+    def get_app(self):
+        # Upstream returns the path it received
+        class PathEchoHandler(tornado.web.RequestHandler):
+            def get(self):
+                self.write({"path": self.request.path})
+
+        upstream_app = tornado.web.Application([
+            (r".*", PathEchoHandler),
+        ])
+        self.upstream_server = tornado.httpserver.HTTPServer(upstream_app)
+        sock, self.upstream_port = tornado.testing.bind_unused_port()
+        self.upstream_server.add_sockets([sock])
+
+        return tornado.web.Application([
+            (r".*", StreamingProxyHandler, {
+                "target_host": f"http://127.0.0.1:{self.upstream_port}/fixed/path",
+                "lock_target_path": True,
+            }),
+        ])
+
+    def test_request_path_ignored_when_locked(self):
+        """All requests should go to the locked target path."""
+        response = self.fetch("/anything/here")
+        self.assertEqual(response.code, 200)
+        data = json.loads(response.body)
+        self.assertEqual(data["path"], "/fixed/path")
+
+    def test_different_paths_all_go_to_same_target(self):
+        """Multiple different request paths should all hit the same target."""
+        paths = ["/foo", "/bar/baz", "/", "/deeply/nested/path"]
+        for path in paths:
+            response = self.fetch(path)
+            self.assertEqual(response.code, 200)
+            data = json.loads(response.body)
+            self.assertEqual(data["path"], "/fixed/path")
+
+
+class TestUnlockedTargetPath(BaseProxyTest):
+    """Test default behavior with lock_target_path=False."""
+
+    def get_app(self):
+        class PathEchoHandler(tornado.web.RequestHandler):
+            def get(self):
+                self.write({"path": self.request.path})
+
+        upstream_app = tornado.web.Application([
+            (r".*", PathEchoHandler),
+        ])
+        self.upstream_server = tornado.httpserver.HTTPServer(upstream_app)
+        sock, self.upstream_port = tornado.testing.bind_unused_port()
+        self.upstream_server.add_sockets([sock])
+
+        return tornado.web.Application([
+            (r".*", StreamingProxyHandler, {
+                "target_host": f"http://127.0.0.1:{self.upstream_port}",
+                "lock_target_path": False,
+            }),
+        ])
+
+    def test_request_path_forwarded_when_unlocked(self):
+        """Request path should be forwarded to upstream."""
+        response = self.fetch("/some/path")
+        self.assertEqual(response.code, 200)
+        data = json.loads(response.body)
+        self.assertEqual(data["path"], "/some/path")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

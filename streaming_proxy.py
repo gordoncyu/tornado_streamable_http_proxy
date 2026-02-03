@@ -25,6 +25,7 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
     auth_fn: AuthFn | None  # pyright: ignore[reportUninitializedInstanceVariable]
     auth_header: str  # pyright: ignore[reportUninitializedInstanceVariable]
     forward_auth: bool  # pyright: ignore[reportUninitializedInstanceVariable]
+    lock_target_path: bool  # pyright: ignore[reportUninitializedInstanceVariable]
 
     @override
     def initialize(
@@ -33,6 +34,7 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
         auth_fn: AuthFn | None = None,
         auth_header: str = "Authorization",
         forward_auth: bool = True,
+        lock_target_path: bool = False,
     ):
         """
         Initialize with target host and optional authentication.
@@ -46,12 +48,15 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
                          Defaults to "Authorization".
             forward_auth: Whether to forward the auth header to upstream.
                           Defaults to True (forward auth header to upstream).
+            lock_target_path: When True, all requests go to target_host exactly,
+                              ignoring the request path. Defaults to False.
         """
-        self.target_host = target_host.rstrip('/')
+        self.target_host = target_host.rstrip('/') if not lock_target_path else target_host
         self.status_line_received = False
         self.auth_fn = auth_fn
         self.auth_header = auth_header
         self.forward_auth = forward_auth
+        self.lock_target_path = lock_target_path
 
     async def _check_auth(self) -> bool:
         """
@@ -164,6 +169,8 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
 
     def _get_target_url(self):
         """Construct the target URL from configured host and request path"""
+        if self.lock_target_path:
+            return self.target_host
         # Get path without query string, preserve leading slash
         path = cast(str, self.request.uri).split('?')[0]
         return f"{self.target_host}{path}"
@@ -274,8 +281,9 @@ class AdvancedStreamingProxyHandler(StreamingProxyHandler):
         auth_fn: AuthFn | None = None,
         auth_header: str = "Authorization",
         forward_auth: bool = True,
+        lock_target_path: bool = False,
     ):
-        super().initialize(target_host, auth_fn, auth_header, forward_auth)
+        super().initialize(target_host, auth_fn, auth_header, forward_auth, lock_target_path)
         self.request_body_chunks = []
         self._auth_checked = False
         self._auth_passed = False
@@ -356,6 +364,7 @@ def make_app(
     auth_fn: AuthFn | None = None,
     auth_header: str = "Authorization",
     forward_auth: bool = True,
+    lock_target_path: bool = False,
 ):
     """
     Create the proxy application.
@@ -366,12 +375,14 @@ def make_app(
                  and returns True if valid, False otherwise.
         auth_header: The header name to read the bearer token from.
         forward_auth: Whether to forward the auth header to upstream.
+        lock_target_path: When True, ignore request path and always use target_host exactly.
     """
     handler_args = {
         "target_host": target_host,
         "auth_fn": auth_fn,
         "auth_header": auth_header,
         "forward_auth": forward_auth,
+        "lock_target_path": lock_target_path,
     }
     return tornado.web.Application([
         (r"/proxy.*", StreamingProxyHandler, handler_args),
