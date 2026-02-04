@@ -14,6 +14,7 @@ The tests focus on:
 """
 
 import asyncio
+import os
 import subprocess
 import sys
 import threading
@@ -497,7 +498,7 @@ class MCPServerProcess:
             [sys.executable, "example_mcp_server.py", str(self.port)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd="/home/gordo/work/streamable-http-proxy",
+            cwd=os.path.dirname(os.path.abspath(__file__)),
         )
         time.sleep(2)
         if self.process.poll() is not None:

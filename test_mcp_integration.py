@@ -22,6 +22,7 @@ The tests will:
 import asyncio
 import base64
 import json
+import os
 import subprocess
 import sys
 import time
@@ -117,7 +118,7 @@ class MCPServerProcess:
             [sys.executable, "example_mcp_server.py", str(self.port)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd="/home/gordo/work/streamable-http-proxy",
+            cwd=os.path.dirname(os.path.abspath(__file__)),
         )
 
         # Wait for server to be ready

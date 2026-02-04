@@ -694,10 +694,10 @@ class TestLockTargetPath(BaseProxyTest):
     """Test lock_target_path functionality."""
 
     def get_app(self):
-        # Upstream returns the path it received
+        # Upstream returns the full URI it received (path + query)
         class PathEchoHandler(tornado.web.RequestHandler):
             def get(self):
-                self.write({"path": self.request.path})
+                self.write({"path": self.request.uri})
 
         upstream_app = tornado.web.Application([
             (r".*", PathEchoHandler),
@@ -729,6 +729,13 @@ class TestLockTargetPath(BaseProxyTest):
             data = json.loads(response.body)
             self.assertEqual(data["path"], "/fixed/path")
 
+    def test_query_params_preserved_when_locked(self):
+        """Query params should still be forwarded even when path is locked."""
+        response = self.fetch("/ignored/path?foo=bar&key=value")
+        self.assertEqual(response.code, 200)
+        data = json.loads(response.body)
+        self.assertEqual(data["path"], "/fixed/path?foo=bar&key=value")
+
 
 class TestUnlockedTargetPath(BaseProxyTest):
     """Test default behavior with lock_target_path=False."""
@@ -736,7 +743,7 @@ class TestUnlockedTargetPath(BaseProxyTest):
     def get_app(self):
         class PathEchoHandler(tornado.web.RequestHandler):
             def get(self):
-                self.write({"path": self.request.path})
+                self.write({"path": self.request.uri})
 
         upstream_app = tornado.web.Application([
             (r".*", PathEchoHandler),
@@ -758,6 +765,13 @@ class TestUnlockedTargetPath(BaseProxyTest):
         self.assertEqual(response.code, 200)
         data = json.loads(response.body)
         self.assertEqual(data["path"], "/some/path")
+
+    def test_query_params_preserved(self):
+        """Query parameters should be forwarded to upstream."""
+        response = self.fetch("/some/path?foo=bar&baz=qux")
+        self.assertEqual(response.code, 200)
+        data = json.loads(response.body)
+        self.assertEqual(data["path"], "/some/path?foo=bar&baz=qux")
 
 
 if __name__ == "__main__":

@@ -168,12 +168,14 @@ class StreamingProxyHandler(tornado.web.RequestHandler):
             self.finish("Bad Gateway: upstream connection failed")
 
     def _get_target_url(self):
-        """Construct the target URL from configured host and request path"""
+        """Construct the target URL from configured host and request path/query"""
         if self.lock_target_path:
+            # Lock path but preserve query params
+            if self.request.query:
+                return f"{self.target_host}?{self.request.query}"
             return self.target_host
-        # Get path without query string, preserve leading slash
-        path = cast(str, self.request.uri).split('?')[0]
-        return f"{self.target_host}{path}"
+        # request.uri includes path and query string
+        return f"{self.target_host}{self.request.uri}"
 
     def _prepare_headers(self):
         """
